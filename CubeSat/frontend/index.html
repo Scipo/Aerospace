@@ -1,0 +1,1274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CubeSat Mission Simulator</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Outfit:wght@300;400;600;700&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --bg-dark: #0a0e17;
+            --panel-bg: rgba(10, 14, 23, 0.85);
+            --panel-border: rgba(56, 189, 248, 0.15);
+            --accent: #38bdf8;
+            --accent-glow: rgba(56, 189, 248, 0.3);
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --success: #22c55e;
+            --text: #e2e8f0;
+            --text-dim: #64748b;
+            --eclipse-color: #6366f1;
+        }
+
+        body {
+            background: var(--bg-dark);
+            color: var(--text);
+            font-family: 'Outfit', sans-serif;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        #canvas-container {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 1;
+        }
+
+        canvas { display: block; }
+
+        /* ─── Loading Screen ─── */
+        #loading-screen {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: var(--bg-dark);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            transition: opacity 0.8s ease;
+        }
+        #loading-screen.hidden { opacity: 0; pointer-events: none; }
+        .loading-title {
+            font-size: 2rem;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            color: var(--accent);
+            margin-bottom: 1rem;
+        }
+        .loading-bar-container {
+            width: 300px;
+            height: 3px;
+            background: rgba(56, 189, 248, 0.1);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .loading-bar {
+            height: 100%;
+            width: 0%;
+            background: var(--accent);
+            border-radius: 2px;
+            transition: width 0.3s ease;
+        }
+        .loading-status {
+            margin-top: 1rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--text-dim);
+        }
+
+        /* ─── Header ─── */
+        #header {
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            height: 48px;
+            background: var(--panel-bg);
+            border-bottom: 1px solid var(--panel-border);
+            backdrop-filter: blur(20px);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            z-index: 100;
+        }
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .logo {
+            font-weight: 700;
+            font-size: 0.95rem;
+            letter-spacing: 0.08em;
+            color: var(--accent);
+        }
+        .logo span { color: var(--text-dim); font-weight: 300; }
+        .mission-time {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--text-dim);
+            padding: 4px 12px;
+            background: rgba(56, 189, 248, 0.05);
+            border: 1px solid var(--panel-border);
+            border-radius: 4px;
+        }
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* ─── View Toggle Buttons ─── */
+        .view-btn {
+            padding: 5px 14px;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.75rem;
+            font-weight: 500;
+            letter-spacing: 0.05em;
+            border: 1px solid var(--panel-border);
+            background: transparent;
+            color: var(--text-dim);
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .view-btn:hover { border-color: var(--accent); color: var(--text); }
+        .view-btn.active {
+            background: rgba(56, 189, 248, 0.12);
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        /* ─── Playback Controls ─── */
+        #playback {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            backdrop-filter: blur(20px);
+            padding: 8px 20px;
+            border-radius: 8px;
+            z-index: 100;
+        }
+        .play-btn {
+            width: 32px; height: 32px;
+            border-radius: 50%;
+            border: 1px solid var(--accent);
+            background: rgba(56, 189, 248, 0.1);
+            color: var(--accent);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+        .play-btn:hover { background: rgba(56, 189, 248, 0.25); }
+        #timeline {
+            width: 400px;
+            height: 4px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: rgba(56, 189, 248, 0.15);
+            border-radius: 2px;
+            outline: none;
+            cursor: pointer;
+        }
+        #timeline::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px; height: 14px;
+            border-radius: 50%;
+            background: var(--accent);
+            cursor: pointer;
+            box-shadow: 0 0 10px var(--accent-glow);
+        }
+        .speed-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            min-width: 45px;
+            text-align: center;
+        }
+        .speed-btn {
+            padding: 3px 8px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
+            border: 1px solid var(--panel-border);
+            background: transparent;
+            color: var(--text-dim);
+            border-radius: 3px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .speed-btn:hover { border-color: var(--accent); color: var(--text); }
+
+        /* ─── Telemetry Panel ─── */
+        #telemetry {
+            position: fixed;
+            top: 60px; right: 12px;
+            width: 240px;
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            backdrop-filter: blur(20px);
+            border-radius: 8px;
+            padding: 16px;
+            z-index: 100;
+            font-size: 0.78rem;
+        }
+        .telem-title {
+            font-weight: 600;
+            font-size: 0.7rem;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 12px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--panel-border);
+        }
+        .telem-group {
+            margin-bottom: 14px;
+        }
+        .telem-group-label {
+            font-size: 0.65rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--text-dim);
+            margin-bottom: 6px;
+        }
+        .telem-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 3px 0;
+        }
+        .telem-label { color: var(--text-dim); font-size: 0.73rem; }
+        .telem-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.73rem;
+            color: var(--text);
+        }
+        .telem-value.eclipse { color: var(--eclipse-color); }
+        .telem-value.sunlit { color: var(--warning); }
+        .telem-value.danger { color: var(--danger); }
+        .telem-value.success { color: var(--success); }
+
+        /* Battery bar */
+        .battery-bar-container {
+            width: 100%;
+            height: 6px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 3px;
+            margin-top: 4px;
+            overflow: hidden;
+        }
+        .battery-bar {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.3s, background 0.3s;
+        }
+
+        /* ─── Orbit Info Panel ─── */
+        #orbit-info {
+            position: fixed;
+            top: 60px; left: 12px;
+            width: 220px;
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            backdrop-filter: blur(20px);
+            border-radius: 8px;
+            padding: 16px;
+            z-index: 100;
+            font-size: 0.78rem;
+        }
+
+        /* ─── Ground Track Panel ─── */
+        #ground-track-panel {
+            position: fixed;
+            bottom: 70px; left: 12px;
+            width: 480px;
+            height: 240px;
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            backdrop-filter: blur(20px);
+            border-radius: 8px;
+            overflow: hidden;
+            z-index: 100;
+            display: none;
+        }
+        #ground-track-canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* ─── Ground Station indicators ─── */
+        .gs-indicator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 2px 0;
+        }
+        .gs-dot {
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: var(--text-dim);
+            transition: all 0.3s;
+        }
+        .gs-dot.active {
+            background: var(--success);
+            box-shadow: 0 0 6px var(--success);
+        }
+        .gs-name { font-size: 0.68rem; color: var(--text-dim); }
+
+        /* ─── Stats Panel ─── */
+        #stats-panel {
+            position: fixed;
+            bottom: 70px; right: 12px;
+            width: 240px;
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            backdrop-filter: blur(20px);
+            border-radius: 8px;
+            padding: 16px;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+
+<!-- Loading Screen -->
+<div id="loading-screen">
+    <div class="loading-title">CUBESAT SIM</div>
+    <div class="loading-bar-container">
+        <div class="loading-bar" id="loading-bar"></div>
+    </div>
+    <div class="loading-status" id="loading-status">Initializing orbital engine...</div>
+</div>
+
+<!-- Header -->
+<div id="header">
+    <div class="header-left">
+        <div class="logo">CUBESAT <span>MISSION SIM</span></div>
+        <div class="mission-time" id="mission-time">T+00:00:00</div>
+    </div>
+    <div class="header-right">
+        <button class="view-btn active" id="btn-earth" onclick="setView('earth')">EARTH ORBIT</button>
+        <button class="view-btn" id="btn-solar" onclick="setView('solar')">SOLAR SYSTEM</button>
+        <button class="view-btn" id="btn-track" onclick="toggleGroundTrack()">GROUND TRACK</button>
+    </div>
+</div>
+
+<!-- 3D Canvas -->
+<div id="canvas-container"></div>
+
+<!-- Orbit Info Panel -->
+<div id="orbit-info">
+    <div class="telem-title">Orbit Parameters</div>
+    <div class="telem-row"><span class="telem-label">Altitude</span><span class="telem-value" id="info-alt">420 km</span></div>
+    <div class="telem-row"><span class="telem-label">Inclination</span><span class="telem-value" id="info-inc">51.6°</span></div>
+    <div class="telem-row"><span class="telem-label">Period</span><span class="telem-value" id="info-period">93.0 min</span></div>
+    <div class="telem-row"><span class="telem-label">Eccentricity</span><span class="telem-value" id="info-ecc">0.0002</span></div>
+    <div class="telem-row"><span class="telem-label">Orbits</span><span class="telem-value" id="info-orbits">0.0</span></div>
+    <div style="margin-top: 14px;">
+        <div class="telem-group-label">Ground Stations</div>
+        <div id="gs-list"></div>
+    </div>
+</div>
+
+<!-- Telemetry Panel -->
+<div id="telemetry">
+    <div class="telem-title">Subsystem Telemetry</div>
+    
+    <div class="telem-group">
+        <div class="telem-group-label">Power</div>
+        <div class="telem-row"><span class="telem-label">Solar Gen</span><span class="telem-value" id="telem-solar">0.0 W</span></div>
+        <div class="telem-row"><span class="telem-label">Consumption</span><span class="telem-value" id="telem-consumption">0.0 W</span></div>
+        <div class="telem-row"><span class="telem-label">Net Power</span><span class="telem-value" id="telem-net">0.0 W</span></div>
+    </div>
+
+    <div class="telem-group">
+        <div class="telem-group-label">Battery</div>
+        <div class="telem-row"><span class="telem-label">Charge</span><span class="telem-value" id="telem-battery">18.0 Wh</span></div>
+        <div class="telem-row"><span class="telem-label">SOC</span><span class="telem-value" id="telem-soc">90%</span></div>
+        <div class="battery-bar-container">
+            <div class="battery-bar" id="battery-bar" style="width:90%; background: var(--success);"></div>
+        </div>
+    </div>
+
+    <div class="telem-group">
+        <div class="telem-group-label">Status</div>
+        <div class="telem-row"><span class="telem-label">Lighting</span><span class="telem-value" id="telem-eclipse">Sunlit</span></div>
+        <div class="telem-row"><span class="telem-label">Comms</span><span class="telem-value" id="telem-comms">No Contact</span></div>
+        <div class="telem-row"><span class="telem-label">Position</span><span class="telem-value" id="telem-pos">0°N 0°E</span></div>
+    </div>
+</div>
+
+<!-- Stats Panel -->
+<div id="stats-panel">
+    <div class="telem-title">Mission Statistics</div>
+    <div class="telem-row"><span class="telem-label">Eclipse Fraction</span><span class="telem-value" id="stat-eclipse">--</span></div>
+    <div class="telem-row"><span class="telem-label">Avg Solar Power</span><span class="telem-value" id="stat-solar">--</span></div>
+    <div class="telem-row"><span class="telem-label">Min Battery</span><span class="telem-value" id="stat-min-bat">--</span></div>
+    <div class="telem-row"><span class="telem-label">Comms Time</span><span class="telem-value" id="stat-comms">--</span></div>
+    <div class="telem-row"><span class="telem-label">Power Budget</span><span class="telem-value" id="stat-power">--</span></div>
+</div>
+
+<!-- Ground Track -->
+<div id="ground-track-panel">
+    <canvas id="ground-track-canvas"></canvas>
+</div>
+
+<!-- Playback Controls -->
+<div id="playback">
+    <button class="play-btn" id="play-btn" onclick="togglePlay()">⏸</button>
+    <input type="range" id="timeline" min="0" max="100" value="0" oninput="scrubTimeline(this.value)">
+    <span class="speed-label" id="speed-label">1x</span>
+    <button class="speed-btn" onclick="changeSpeed(-1)">−</button>
+    <button class="speed-btn" onclick="changeSpeed(1)">+</button>
+</div>
+
+<!-- Three.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ═══════════════════════════════════════════════════
+//  CUBESAT MISSION SIMULATOR — Three.js Frontend
+// ═══════════════════════════════════════════════════
+
+let scene, camera, renderer, controls;
+let earthGroup, sunMesh, cubesatGroup, orbitLine;
+let solarSystemGroup, earthOrbitGroup;
+let groundTrackCtx;
+
+let simData = null;
+let currentStep = 0;
+let playing = true;
+let playbackSpeed = 1;
+const speedLevels = [0.25, 0.5, 1, 2, 5, 10, 50, 100];
+let speedIndex = 2;
+
+let currentView = 'earth'; // 'earth' or 'solar'
+let groundTrackVisible = false;
+
+// Scale factors
+const EARTH_SCALE = 1.0;        // Earth radius = 1 unit in earth view
+const ORBIT_SCALE = 1.0 / 6378; // km to units
+const SOLAR_SCALE = 20;         // AU to units in solar view
+
+// ── Loading ──
+function updateLoading(pct, msg) {
+    document.getElementById('loading-bar').style.width = pct + '%';
+    document.getElementById('loading-status').textContent = msg;
+}
+
+// ── Initialize ──
+async function init() {
+    updateLoading(10, 'Loading simulation data...');
+    
+    try {
+        const resp = await fetch('simulation_data.json');
+        simData = await resp.json();
+    } catch(e) {
+        document.getElementById('loading-status').textContent = 
+            'Error: Could not load simulation_data.json. Run the Python simulation first.';
+        return;
+    }
+    
+    updateLoading(30, 'Building 3D scene...');
+    
+    // Renderer
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.2;
+    document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+    // Scene
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x020510);
+
+    // Camera
+    camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.001, 10000);
+    camera.position.set(2.5, 1.5, 2.5);
+
+    // Simple orbit controls implementation
+    setupControls();
+
+    updateLoading(50, 'Creating celestial bodies...');
+    
+    // ── Starfield ──
+    createStarfield();
+    
+    // ── Sun ──
+    createSun();
+    
+    // ── Earth Orbit View ──
+    earthOrbitGroup = new THREE.Group();
+    scene.add(earthOrbitGroup);
+    createEarth();
+    createCubeSat();
+    createOrbitPath();
+    
+    // ── Solar System View ──
+    solarSystemGroup = new THREE.Group();
+    solarSystemGroup.visible = false;
+    scene.add(solarSystemGroup);
+    createSolarSystem();
+    
+    updateLoading(70, 'Initializing ground track...');
+    
+    // Ground track canvas
+    setupGroundTrack();
+    
+    // Populate UI
+    populateUI();
+    
+    updateLoading(90, 'Starting simulation...');
+    
+    // Lights
+    const ambientLight = new THREE.AmbientLight(0x404060, 0.4);
+    scene.add(ambientLight);
+    
+    const sunLight = new THREE.DirectionalLight(0xfff4e6, 2.0);
+    sunLight.position.set(50, 10, 0);
+    scene.add(sunLight);
+
+    updateLoading(100, 'Launch!');
+    
+    setTimeout(() => {
+        document.getElementById('loading-screen').classList.add('hidden');
+    }, 500);
+
+    // Start animation
+    animate();
+    
+    // Resize handler
+    window.addEventListener('resize', onResize);
+}
+
+// ── Simple Orbit Controls ──
+function setupControls() {
+    let isDragging = false;
+    let prevMouse = { x: 0, y: 0 };
+    let spherical = { theta: Math.PI / 4, phi: Math.PI / 4, radius: 4 };
+    let target = new THREE.Vector3(0, 0, 0);
+
+    function updateCamera() {
+        camera.position.x = target.x + spherical.radius * Math.sin(spherical.phi) * Math.cos(spherical.theta);
+        camera.position.y = target.y + spherical.radius * Math.cos(spherical.phi);
+        camera.position.z = target.z + spherical.radius * Math.sin(spherical.phi) * Math.sin(spherical.theta);
+        camera.lookAt(target);
+    }
+    updateCamera();
+
+    renderer.domElement.addEventListener('mousedown', e => { isDragging = true; prevMouse = { x: e.clientX, y: e.clientY }; });
+    renderer.domElement.addEventListener('mousemove', e => {
+        if (!isDragging) return;
+        const dx = e.clientX - prevMouse.x;
+        const dy = e.clientY - prevMouse.y;
+        spherical.theta -= dx * 0.005;
+        spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi + dy * 0.005));
+        prevMouse = { x: e.clientX, y: e.clientY };
+        updateCamera();
+    });
+    renderer.domElement.addEventListener('mouseup', () => isDragging = false);
+    renderer.domElement.addEventListener('mouseleave', () => isDragging = false);
+    renderer.domElement.addEventListener('wheel', e => {
+        spherical.radius *= (1 + e.deltaY * 0.001);
+        spherical.radius = Math.max(0.5, Math.min(500, spherical.radius));
+        updateCamera();
+    });
+    
+    // Touch support
+    renderer.domElement.addEventListener('touchstart', e => {
+        if (e.touches.length === 1) { isDragging = true; prevMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }
+    });
+    renderer.domElement.addEventListener('touchmove', e => {
+        if (!isDragging || e.touches.length !== 1) return;
+        const dx = e.touches[0].clientX - prevMouse.x;
+        const dy = e.touches[0].clientY - prevMouse.y;
+        spherical.theta -= dx * 0.005;
+        spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi + dy * 0.005));
+        prevMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        updateCamera();
+    });
+    renderer.domElement.addEventListener('touchend', () => isDragging = false);
+
+    // Expose for view switching
+    window._controls = { spherical, target, updateCamera };
+}
+
+// ── Starfield ──
+function createStarfield() {
+    const starGeo = new THREE.BufferGeometry();
+    const starCount = 8000;
+    const positions = new Float32Array(starCount * 3);
+    const colors = new Float32Array(starCount * 3);
+    
+    for (let i = 0; i < starCount; i++) {
+        const r = 500 + Math.random() * 500;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        positions[i*3] = r * Math.sin(phi) * Math.cos(theta);
+        positions[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
+        positions[i*3+2] = r * Math.cos(phi);
+        
+        const brightness = 0.3 + Math.random() * 0.7;
+        const tint = Math.random();
+        colors[i*3] = brightness * (tint > 0.7 ? 1.0 : 0.9);
+        colors[i*3+1] = brightness * (tint > 0.9 ? 0.8 : 0.95);
+        colors[i*3+2] = brightness;
+    }
+    
+    starGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    starGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    
+    const starMat = new THREE.PointsMaterial({ size: 1.5, vertexColors: true, sizeAttenuation: false });
+    scene.add(new THREE.Points(starGeo, starMat));
+}
+
+// ── Sun ──
+function createSun() {
+    const sunGeo = new THREE.SphereGeometry(0.15, 32, 32);
+    const sunMat = new THREE.MeshBasicMaterial({ color: 0xFDB813 });
+    sunMesh = new THREE.Mesh(sunGeo, sunMat);
+    sunMesh.position.set(50, 0, 0); // Far away in earth view
+    scene.add(sunMesh);
+    
+    // Sun glow
+    const glowGeo = new THREE.SphereGeometry(0.3, 32, 32);
+    const glowMat = new THREE.MeshBasicMaterial({ color: 0xFDB813, transparent: true, opacity: 0.15 });
+    const glow = new THREE.Mesh(glowGeo, glowMat);
+    sunMesh.add(glow);
+}
+
+// ── Earth ──
+function createEarth() {
+    earthGroup = new THREE.Group();
+    
+    // Earth sphere with procedural look
+    const earthGeo = new THREE.SphereGeometry(1, 64, 64);
+    
+    // Create procedural Earth texture
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024; canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    
+    // Ocean base
+    const oceanGrad = ctx.createLinearGradient(0, 0, 0, 512);
+    oceanGrad.addColorStop(0, '#1a3a5c');
+    oceanGrad.addColorStop(0.3, '#1e4d7a');
+    oceanGrad.addColorStop(0.5, '#2a6496');
+    oceanGrad.addColorStop(0.7, '#1e4d7a');
+    oceanGrad.addColorStop(1, '#1a3a5c');
+    ctx.fillStyle = oceanGrad;
+    ctx.fillRect(0, 0, 1024, 512);
+    
+    // Simplified continents
+    ctx.fillStyle = '#3d7a3d';
+    // Americas
+    ctx.beginPath(); ctx.ellipse(250, 180, 60, 80, -0.3, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(270, 300, 40, 70, 0.2, 0, Math.PI*2); ctx.fill();
+    // Europe/Africa
+    ctx.beginPath(); ctx.ellipse(520, 180, 40, 60, 0.1, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(540, 300, 35, 80, 0, 0, Math.PI*2); ctx.fill();
+    // Asia
+    ctx.beginPath(); ctx.ellipse(680, 170, 100, 70, 0, 0, Math.PI*2); ctx.fill();
+    // Australia
+    ctx.beginPath(); ctx.ellipse(770, 340, 40, 30, 0.3, 0, Math.PI*2); ctx.fill();
+    // Ice caps
+    ctx.fillStyle = '#c8d8e8';
+    ctx.fillRect(0, 0, 1024, 30);
+    ctx.fillRect(0, 482, 1024, 30);
+    
+    const earthTex = new THREE.CanvasTexture(canvas);
+    
+    const earthMat = new THREE.MeshPhongMaterial({
+        map: earthTex,
+        specular: 0x333333,
+        shininess: 25,
+    });
+    
+    const earthMesh = new THREE.Mesh(earthGeo, earthMat);
+    earthGroup.add(earthMesh);
+    
+    // Atmosphere glow
+    const atmoGeo = new THREE.SphereGeometry(1.02, 64, 64);
+    const atmoMat = new THREE.MeshPhongMaterial({
+        color: 0x4a90d9,
+        transparent: true,
+        opacity: 0.08,
+        side: THREE.FrontSide
+    });
+    earthGroup.add(new THREE.Mesh(atmoGeo, atmoMat));
+    
+    // Equator ring
+    const eqGeo = new THREE.RingGeometry(1.005, 1.007, 128);
+    const eqMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.15, side: THREE.DoubleSide });
+    const eqRing = new THREE.Mesh(eqGeo, eqMat);
+    eqRing.rotation.x = Math.PI / 2;
+    earthGroup.add(eqRing);
+    
+    earthOrbitGroup.add(earthGroup);
+}
+
+// ── CubeSat ──
+function createCubeSat() {
+    cubesatGroup = new THREE.Group();
+    
+    // Main body (3U = elongated box)
+    const bodyGeo = new THREE.BoxGeometry(0.015, 0.015, 0.045);
+    const bodyMat = new THREE.MeshPhongMaterial({ 
+        color: 0xc0c0c0, 
+        specular: 0x666666, 
+        shininess: 60,
+        emissive: 0x111111
+    });
+    const body = new THREE.Mesh(bodyGeo, bodyMat);
+    cubesatGroup.add(body);
+    
+    // Solar panels (deployed, blue)
+    const panelMat = new THREE.MeshPhongMaterial({ 
+        color: 0x1a4b8c, 
+        specular: 0x4488cc, 
+        shininess: 80,
+        emissive: 0x0a1a3a
+    });
+    
+    // Left panel
+    const panelGeo = new THREE.BoxGeometry(0.04, 0.001, 0.04);
+    const leftPanel = new THREE.Mesh(panelGeo, panelMat);
+    leftPanel.position.set(-0.028, 0, 0);
+    cubesatGroup.add(leftPanel);
+    
+    // Right panel
+    const rightPanel = new THREE.Mesh(panelGeo, panelMat);
+    rightPanel.position.set(0.028, 0, 0);
+    cubesatGroup.add(rightPanel);
+    
+    // Antenna
+    const antGeo = new THREE.CylinderGeometry(0.001, 0.001, 0.02);
+    const antMat = new THREE.MeshPhongMaterial({ color: 0xe0e0e0 });
+    const antenna = new THREE.Mesh(antGeo, antMat);
+    antenna.position.set(0, 0, 0.03);
+    cubesatGroup.add(antenna);
+    
+    // Position indicator glow
+    const glowGeo = new THREE.SphereGeometry(0.008, 16, 16);
+    const glowMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.6 });
+    const cubesatGlow = new THREE.Mesh(glowGeo, glowMat);
+    cubesatGlow.name = 'glow';
+    cubesatGroup.add(cubesatGlow);
+    
+    earthOrbitGroup.add(cubesatGroup);
+}
+
+// ── Orbit Path ──
+function createOrbitPath() {
+    if (!simData) return;
+    
+    const orbitPathData = simData.cubesat.orbit_path;
+    const points = orbitPathData.map(p => 
+        new THREE.Vector3(p[0] * ORBIT_SCALE, p[2] * ORBIT_SCALE, -p[1] * ORBIT_SCALE)
+    );
+    points.push(points[0]); // Close the loop
+    
+    const orbitGeo = new THREE.BufferGeometry().setFromPoints(points);
+    const orbitMat = new THREE.LineBasicMaterial({ 
+        color: 0x38bdf8, 
+        transparent: true, 
+        opacity: 0.4 
+    });
+    orbitLine = new THREE.Line(orbitGeo, orbitMat);
+    earthOrbitGroup.add(orbitLine);
+    
+    // Orbit trail (recent path, brighter)
+    const trailGeo = new THREE.BufferGeometry();
+    const trailPositions = new Float32Array(300 * 3);
+    trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
+    const trailMat = new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.8 });
+    const trail = new THREE.Line(trailGeo, trailMat);
+    trail.name = 'trail';
+    earthOrbitGroup.add(trail);
+}
+
+// ── Solar System ──
+function createSolarSystem() {
+    if (!simData) return;
+    
+    const planets = simData.solar_system.planets;
+    
+    // Sun at center
+    const solarSunGeo = new THREE.SphereGeometry(0.8, 32, 32);
+    const solarSunMat = new THREE.MeshBasicMaterial({ color: 0xFDB813 });
+    const solarSun = new THREE.Mesh(solarSunGeo, solarSunMat);
+    solarSystemGroup.add(solarSun);
+    
+    // Sun glow
+    const sGlowGeo = new THREE.SphereGeometry(1.2, 32, 32);
+    const sGlowMat = new THREE.MeshBasicMaterial({ color: 0xFDB813, transparent: true, opacity: 0.1 });
+    solarSystemGroup.add(new THREE.Mesh(sGlowGeo, sGlowMat));
+    
+    // Planet orbits and markers
+    const orbitPaths = simData.solar_system.orbit_paths;
+    
+    for (const [name, data] of Object.entries(planets)) {
+        // Orbit path
+        const pathPoints = orbitPaths[name].map(p =>
+            new THREE.Vector3(p[0] * SOLAR_SCALE, p[2] * SOLAR_SCALE, -p[1] * SOLAR_SCALE)
+        );
+        pathPoints.push(pathPoints[0]);
+        
+        const pathGeo = new THREE.BufferGeometry().setFromPoints(pathPoints);
+        const pathMat = new THREE.LineBasicMaterial({ 
+            color: data.color, 
+            transparent: true, 
+            opacity: 0.25 
+        });
+        solarSystemGroup.add(new THREE.Line(pathGeo, pathMat));
+        
+        // Planet marker
+        const size = name === 'jupiter' ? 0.5 : name === 'saturn' ? 0.45 : 0.2;
+        const planetGeo = new THREE.SphereGeometry(size, 24, 24);
+        const planetMat = new THREE.MeshPhongMaterial({ 
+            color: data.color,
+            emissive: data.color,
+            emissiveIntensity: 0.2
+        });
+        const planetMesh = new THREE.Mesh(planetGeo, planetMat);
+        planetMesh.name = 'planet_' + name;
+        
+        // Set initial position
+        const pos = data.positions[0];
+        planetMesh.position.set(pos[0] * SOLAR_SCALE, pos[2] * SOLAR_SCALE, -pos[1] * SOLAR_SCALE);
+        
+        solarSystemGroup.add(planetMesh);
+        
+        // Saturn rings
+        if (name === 'saturn') {
+            const ringGeo = new THREE.RingGeometry(0.6, 0.9, 64);
+            const ringMat = new THREE.MeshBasicMaterial({ 
+                color: 0xe8d5a3, transparent: true, opacity: 0.4, side: THREE.DoubleSide 
+            });
+            const ring = new THREE.Mesh(ringGeo, ringMat);
+            ring.rotation.x = Math.PI / 2.5;
+            planetMesh.add(ring);
+        }
+        
+        // Planet label
+        const labelCanvas = document.createElement('canvas');
+        labelCanvas.width = 128; labelCanvas.height = 32;
+        const lctx = labelCanvas.getContext('2d');
+        lctx.fillStyle = '#ffffff';
+        lctx.font = '16px Outfit';
+        lctx.textAlign = 'center';
+        lctx.fillText(name.charAt(0).toUpperCase() + name.slice(1), 64, 20);
+        
+        const labelTex = new THREE.CanvasTexture(labelCanvas);
+        const labelMat = new THREE.SpriteMaterial({ map: labelTex, transparent: true, opacity: 0.6 });
+        const label = new THREE.Sprite(labelMat);
+        label.position.y = size + 0.4;
+        label.scale.set(1.5, 0.4, 1);
+        planetMesh.add(label);
+    }
+}
+
+// ── Ground Track ──
+function setupGroundTrack() {
+    const canvas = document.getElementById('ground-track-canvas');
+    canvas.width = 480 * 2;
+    canvas.height = 240 * 2;
+    groundTrackCtx = canvas.getContext('2d');
+}
+
+function drawGroundTrack() {
+    if (!groundTrackCtx || !simData) return;
+    const ctx = groundTrackCtx;
+    const w = ctx.canvas.width;
+    const h = ctx.canvas.height;
+    
+    ctx.clearRect(0, 0, w, h);
+    
+    // Background
+    ctx.fillStyle = '#0a1628';
+    ctx.fillRect(0, 0, w, h);
+    
+    // Grid
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.08)';
+    ctx.lineWidth = 1;
+    for (let lon = -180; lon <= 180; lon += 30) {
+        const x = (lon + 180) / 360 * w;
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+    }
+    for (let lat = -90; lat <= 90; lat += 30) {
+        const y = (90 - lat) / 180 * h;
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+    }
+    
+    // Equator
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.2)';
+    ctx.beginPath(); ctx.moveTo(0, h/2); ctx.lineTo(w, h/2); ctx.stroke();
+    
+    // Ground track path (all computed points up to current)
+    const gt = simData.cubesat.ground_track_deg;
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.3)';
+    ctx.lineWidth = 1.5;
+    
+    let prevX = null, prevY = null;
+    for (let i = 0; i <= Math.min(currentStep, gt.length - 1); i++) {
+        const lat = gt[i][0];
+        const lon = gt[i][1];
+        const x = (lon + 180) / 360 * w;
+        const y = (90 - lat) / 180 * h;
+        
+        if (prevX !== null && Math.abs(x - prevX) < w * 0.5) {
+            ctx.beginPath();
+            ctx.moveTo(prevX, prevY);
+            ctx.lineTo(x, y);
+            ctx.stroke();
+        }
+        prevX = x; prevY = y;
+    }
+    
+    // Current position
+    if (currentStep < gt.length) {
+        const lat = gt[currentStep][0];
+        const lon = gt[currentStep][1];
+        const cx = (lon + 180) / 360 * w;
+        const cy = (90 - lat) / 180 * h;
+        
+        // Glow
+        ctx.beginPath();
+        ctx.arc(cx, cy, 12, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.2)';
+        ctx.fill();
+        
+        // Dot
+        ctx.beginPath();
+        ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+        ctx.fillStyle = '#38bdf8';
+        ctx.fill();
+    }
+    
+    // Ground stations
+    const stations = simData.cubesat.comms.ground_stations;
+    stations.forEach(gs => {
+        const x = (gs.lon_deg + 180) / 360 * w;
+        const y = (90 - gs.lat_deg) / 180 * h;
+        
+        const isVisible = gs.visibility[currentStep];
+        
+        ctx.beginPath();
+        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.fillStyle = isVisible ? '#22c55e' : '#64748b';
+        ctx.fill();
+        
+        if (isVisible) {
+            ctx.beginPath();
+            ctx.arc(x, y, 8, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(34, 197, 94, 0.4)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+        
+        ctx.fillStyle = '#64748b';
+        ctx.font = '16px Outfit';
+        ctx.textAlign = 'center';
+        ctx.fillText(gs.name, x, y - 10);
+    });
+    
+    // Labels
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.font = '14px JetBrains Mono';
+    ctx.textAlign = 'left';
+    ctx.fillText('180°W', 4, h - 4);
+    ctx.textAlign = 'right';
+    ctx.fillText('180°E', w - 4, h - 4);
+    ctx.textAlign = 'center';
+    ctx.fillText('0°', w/2, h - 4);
+}
+
+// ── Update simulation step ──
+function updateSimulation() {
+    if (!simData) return;
+    
+    const totalSteps = simData.cubesat.positions_eci_km.length;
+    
+    // CubeSat position
+    const pos = simData.cubesat.positions_eci_km[currentStep];
+    cubesatGroup.position.set(
+        pos[0] * ORBIT_SCALE,
+        pos[2] * ORBIT_SCALE,
+        -pos[1] * ORBIT_SCALE
+    );
+    
+    // CubeSat attitude
+    const quat = simData.cubesat.attitude_quaternions[currentStep];
+    cubesatGroup.quaternion.set(quat[1], quat[3], -quat[2], quat[0]);
+    
+    // Eclipse visual - change glow color
+    const inEclipse = simData.cubesat.subsystems.eclipse[currentStep];
+    const glow = cubesatGroup.getObjectByName('glow');
+    if (glow) {
+        glow.material.color.setHex(inEclipse ? 0x6366f1 : 0x38bdf8);
+        glow.material.opacity = inEclipse ? 0.3 : 0.6;
+    }
+    
+    // Update trail
+    const trail = earthOrbitGroup.getObjectByName('trail');
+    if (trail) {
+        const trailLen = Math.min(100, currentStep);
+        const positions = trail.geometry.attributes.position.array;
+        let idx = 0;
+        for (let i = currentStep - trailLen; i <= currentStep && i < totalSteps; i++) {
+            if (i < 0) continue;
+            const p = simData.cubesat.positions_eci_km[i];
+            positions[idx++] = p[0] * ORBIT_SCALE;
+            positions[idx++] = p[2] * ORBIT_SCALE;
+            positions[idx++] = -p[1] * ORBIT_SCALE;
+        }
+        trail.geometry.setDrawRange(0, idx / 3);
+        trail.geometry.attributes.position.needsUpdate = true;
+    }
+    
+    // Earth rotation
+    const timeS = simData.times[currentStep];
+    earthGroup.rotation.y = timeS * 7.2921159e-5;
+    
+    // Update solar system planet positions
+    if (currentView === 'solar') {
+        for (const [name, data] of Object.entries(simData.solar_system.planets)) {
+            const mesh = solarSystemGroup.getObjectByName('planet_' + name);
+            if (mesh && data.positions.length > 0) {
+                // Interpolate planet position
+                const planetTimes = data.times;
+                const fracIdx = (timeS / planetTimes[planetTimes.length-1]) * (planetTimes.length-1);
+                const idx0 = Math.min(Math.floor(fracIdx), planetTimes.length - 2);
+                const frac = fracIdx - idx0;
+                const p0 = data.positions[idx0];
+                const p1 = data.positions[Math.min(idx0+1, data.positions.length-1)];
+                mesh.position.set(
+                    (p0[0] + frac*(p1[0]-p0[0])) * SOLAR_SCALE,
+                    (p0[2] + frac*(p1[2]-p0[2])) * SOLAR_SCALE,
+                    -(p0[1] + frac*(p1[1]-p0[1])) * SOLAR_SCALE
+                );
+            }
+        }
+    }
+    
+    // Update UI
+    updateTelemetry();
+    
+    // Update ground track
+    if (groundTrackVisible) drawGroundTrack();
+    
+    // Timeline slider
+    document.getElementById('timeline').value = (currentStep / (totalSteps - 1)) * 100;
+}
+
+// ── Update telemetry UI ──
+function updateTelemetry() {
+    const sub = simData.cubesat.subsystems;
+    const t = simData.times[currentStep];
+    
+    // Mission time
+    const hours = Math.floor(t / 3600);
+    const mins = Math.floor((t % 3600) / 60);
+    const secs = Math.floor(t % 60);
+    document.getElementById('mission-time').textContent = 
+        `T+${String(hours).padStart(2,'0')}:${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
+    
+    // Power
+    const solarPow = sub.solar_power_w[currentStep];
+    const consumption = sub.power_consumption_w[currentStep];
+    const net = solarPow - consumption;
+    
+    document.getElementById('telem-solar').textContent = solarPow.toFixed(1) + ' W';
+    document.getElementById('telem-solar').className = 'telem-value' + (solarPow > 0 ? ' sunlit' : '');
+    document.getElementById('telem-consumption').textContent = consumption.toFixed(1) + ' W';
+    document.getElementById('telem-net').textContent = (net >= 0 ? '+' : '') + net.toFixed(1) + ' W';
+    document.getElementById('telem-net').className = 'telem-value' + (net >= 0 ? ' success' : ' danger');
+    
+    // Battery
+    const battWh = sub.battery_wh[currentStep];
+    const battPct = sub.battery_percent[currentStep];
+    document.getElementById('telem-battery').textContent = battWh.toFixed(1) + ' Wh';
+    document.getElementById('telem-soc').textContent = battPct.toFixed(0) + '%';
+    
+    const bar = document.getElementById('battery-bar');
+    bar.style.width = battPct + '%';
+    bar.style.background = battPct > 50 ? 'var(--success)' : battPct > 20 ? 'var(--warning)' : 'var(--danger)';
+    
+    // Eclipse status
+    const inEclipse = sub.eclipse[currentStep];
+    const eclipseEl = document.getElementById('telem-eclipse');
+    eclipseEl.textContent = inEclipse ? '● Eclipse' : '● Sunlit';
+    eclipseEl.className = 'telem-value' + (inEclipse ? ' eclipse' : ' sunlit');
+    
+    // Ground station
+    const stations = simData.cubesat.comms.ground_stations;
+    let activeGS = null;
+    stations.forEach(gs => {
+        if (gs.visibility[currentStep]) activeGS = gs.name;
+        const dot = document.getElementById('gs-dot-' + gs.name.replace(/\s/g, ''));
+        if (dot) dot.className = 'gs-dot' + (gs.visibility[currentStep] ? ' active' : '');
+    });
+    const commsEl = document.getElementById('telem-comms');
+    commsEl.textContent = activeGS ? '● ' + activeGS : 'No Contact';
+    commsEl.className = 'telem-value' + (activeGS ? ' success' : '');
+    
+    // Position
+    const gt = simData.cubesat.ground_track_deg[currentStep];
+    const latStr = Math.abs(gt[0]).toFixed(1) + '°' + (gt[0] >= 0 ? 'N' : 'S');
+    const lonStr = Math.abs(gt[1]).toFixed(1) + '°' + (gt[1] >= 0 ? 'E' : 'W');
+    document.getElementById('telem-pos').textContent = latStr + ' ' + lonStr;
+    
+    // Orbit count
+    const period = simData.cubesat.orbit.period_minutes * 60;
+    document.getElementById('info-orbits').textContent = (t / period).toFixed(1);
+}
+
+// ── Populate static UI ──
+function populateUI() {
+    if (!simData) return;
+    
+    const orbit = simData.cubesat.orbit;
+    document.getElementById('info-alt').textContent = orbit.altitude_km.toFixed(0) + ' km';
+    document.getElementById('info-inc').textContent = orbit.inclination_deg.toFixed(1) + '°';
+    document.getElementById('info-period').textContent = orbit.period_minutes.toFixed(1) + ' min';
+    document.getElementById('info-ecc').textContent = orbit.eccentricity.toFixed(4);
+    
+    // Ground stations
+    const gsList = document.getElementById('gs-list');
+    simData.cubesat.comms.ground_stations.forEach(gs => {
+        const div = document.createElement('div');
+        div.className = 'gs-indicator';
+        div.innerHTML = `<span class="gs-dot" id="gs-dot-${gs.name.replace(/\s/g, '')}"></span>
+                         <span class="gs-name">${gs.name}</span>`;
+        gsList.appendChild(div);
+    });
+    
+    // Stats
+    const stats = simData.statistics;
+    document.getElementById('stat-eclipse').textContent = (stats.eclipse_fraction * 100).toFixed(1) + '%';
+    document.getElementById('stat-solar').textContent = stats.avg_solar_power_w.toFixed(1) + ' W';
+    document.getElementById('stat-min-bat').textContent = stats.min_battery_percent.toFixed(0) + '%';
+    document.getElementById('stat-comms').textContent = stats.total_comms_minutes.toFixed(0) + ' min';
+    
+    const powerEl = document.getElementById('stat-power');
+    powerEl.textContent = stats.power_positive ? '✓ POSITIVE' : '✗ NEGATIVE';
+    powerEl.className = 'telem-value' + (stats.power_positive ? ' success' : ' danger');
+}
+
+// ── View Switching ──
+function setView(view) {
+    currentView = view;
+    
+    document.getElementById('btn-earth').classList.toggle('active', view === 'earth');
+    document.getElementById('btn-solar').classList.toggle('active', view === 'solar');
+    
+    earthOrbitGroup.visible = (view === 'earth');
+    solarSystemGroup.visible = (view === 'solar');
+    
+    const ctrl = window._controls;
+    if (view === 'earth') {
+        ctrl.spherical.radius = 4;
+        ctrl.target.set(0, 0, 0);
+        sunMesh.position.set(50, 0, 0);
+        sunMesh.scale.set(1, 1, 1);
+    } else {
+        ctrl.spherical.radius = 80;
+        ctrl.target.set(0, 0, 0);
+        sunMesh.position.set(0, 0, 0);
+        sunMesh.scale.set(5, 5, 5);
+    }
+    ctrl.updateCamera();
+}
+
+function toggleGroundTrack() {
+    groundTrackVisible = !groundTrackVisible;
+    document.getElementById('ground-track-panel').style.display = groundTrackVisible ? 'block' : 'none';
+    document.getElementById('btn-track').classList.toggle('active', groundTrackVisible);
+    if (groundTrackVisible) drawGroundTrack();
+}
+
+// ── Playback ──
+function togglePlay() {
+    playing = !playing;
+    document.getElementById('play-btn').textContent = playing ? '⏸' : '▶';
+}
+
+function changeSpeed(dir) {
+    speedIndex = Math.max(0, Math.min(speedLevels.length - 1, speedIndex + dir));
+    playbackSpeed = speedLevels[speedIndex];
+    document.getElementById('speed-label').textContent = playbackSpeed + 'x';
+}
+
+function scrubTimeline(val) {
+    if (!simData) return;
+    const totalSteps = simData.cubesat.positions_eci_km.length;
+    currentStep = Math.floor((val / 100) * (totalSteps - 1));
+    updateSimulation();
+}
+
+// ── Resize ──
+function onResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+// ── Animation Loop ──
+let lastTime = -1;
+let accumulator = 0;
+
+function animate(time) {
+    requestAnimationFrame(animate);
+    
+    if (!simData) return;
+    
+    if (lastTime < 0) {
+        lastTime = time;
+        updateSimulation();
+        renderer.render(scene, camera);
+        return;
+    }
+
+    const dt = Math.min((time - lastTime) / 1000, 0.1);
+    lastTime = time;
+
+    if (playing && dt > 0) {
+        accumulator += dt * playbackSpeed * 10;
+
+        let stepped = false;
+        while (accumulator >= 1) {
+            currentStep++;
+            accumulator -= 1;
+            stepped = true;
+            if (currentStep >= simData.cubesat.positions_eci_km.length) {
+                currentStep = 0;
+            }
+        }
+        if (stepped) {
+            updateSimulation();
+        }
+    }
+    
+    renderer.render(scene, camera);
+}
+
+// ── Start ──
+init();
+</script>
+</body>
+</html>
