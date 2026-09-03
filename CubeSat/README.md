@@ -3,7 +3,7 @@
 A complete aerospace simulation and 3D visualization project combining orbital mechanics, CubeSat subsystem modeling, and a solar system orrery.
 
 Built with **Python** (orbital engine) and **Three.js** (3D visualization).
-
+![ScreenShot](../CubeSat/images/pic1.png)
 ---
 
 ## Quick Start
@@ -43,7 +43,6 @@ pip install numpy
 
 No other dependencies. Three.js loads from CDN automatically.
 
----
 ---
 
 ## Controls
